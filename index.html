@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Request Inspector</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+    
+    const getInitialTheme = () => {
+      const hour = new Date().getHours();
+      return hour >= 6 && hour < 18 ? 'light' : 'dark';
+    };
+
+    // Icons
+    const Send = () => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <line x1="22" y1="2" x2="11" y2="13"></line>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+      </svg>
+    );
+    
+    const Lock = ({ size = 16 }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+      </svg>
+    );
+    
+    const Unlock = ({ size = 16 }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+        <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+      </svg>
+    );
+    
+    const Trash2 = ({ size = 16 }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <polyline points="3 6 5 6 21 6"></polyline>
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+      </svg>
+    );
+    
+    const Download = ({ size = 16 }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+        <polyline points="7 10 12 15 17 10"></polyline>
+        <line x1="12" y1="15" x2="12" y2="3"></line>
+      </svg>
+    );
+    
+    const Copy = ({ size = 16 }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+    );
+    
+    const Clock = ({ size = 16 }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <polyline points="12 6 12 12 16 14"></polyline>
+      </svg>
+    );
+
+    function WebRequestInspector() {
+      const [theme, setTheme] = useState(getInitialTheme());
+      const [url, setUrl] = useState('');
+      const [method, setMethod] = useState('GET');
+      const [headers, setHeaders] = useState([{ key: '', value: '' }]);
+      const [body, setBody] = useState('');
+      const [followRedirects, setFollowRedirects] = useState(true);
+      const [timeout, setTimeout] = useState(30);
+      
+      const [response, setResponse] = useState(null);
+      const [loading, setLoading] = useState(false);
+      const [activeTab, setActiveTab] = useState('overview');
+      
+      const [history, setHistory] = useState([]);
+      const iframeRef = useRef(null);
+
+      useEffect(() => {
+        const saved = JSON.parse(localStorage.getItem('requestHistory') || '[]');
+        setHistory(saved);
+      }, []);
+
+      const isSecure = url.startsWith('https://');
+
+      const addHeader = () => {
+        setHeaders([...headers, { key: '', value: '' }]);
+      };
+
+      const updateHeader = (index, field, value) => {
+        const updated = [...headers];
+        updated[index][field] = value;
+        setHeaders(updated);
+      };
+
+      const removeHeader = (index) => {
+        setHeaders(headers.filter((_, i) => i !== index));
+      };
+
+      const executeRequest = async () => {
+        setLoading(true);
+        setActiveTab('overview');
+        const startTime = performance.now();
+
+        try {
+          const customHeaders = {};
+          headers.forEach(h => {
+            if (h.key && h.value) {
+              customHeaders[h.key] = h.value;
+            }
+          });
+
+          const requestData = {
+            url,
+            method,
+            headers: customHeaders,
+            body: ['POST', 'PUT', 'PATCH'].includes(method) ? body : null,
+            followRedirects,
+            timeout: timeout * 1000
+          };
+
+          const proxyResponse = await fetch('/api/request', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestData)
+          });
+
+          const duration = performance.now() - startTime;
+          const data = await proxyResponse.json();
+
+          if (data.error) {
+            throw new Error(data.error);
+          }
+
+          const result = {
+            ...data,
+            duration: Math.round(duration),
+            timestamp: new Date().toISOString(),
+            request: {
+              url,
+              method,
+              headers: customHeaders,
+              body: requestData.body
+            }
+          };
+
+          setResponse(result);
+
+          // Save to history
+          const historyEntry = {
+            id: Date.now(),
+            url,
+            method,
+            status: data.status,
+            duration: Math.round(duration),
+            timestamp: new Date().toISOString()
+          };
+          
+          const updatedHistory = [historyEntry, ...history].slice(0, 50);
+          setHistory(updatedHistory);
+          localStorage.setItem('requestHistory', JSON.stringify(updatedHistory));
+
+        } catch (err) {
+          const duration = performance.now() - startTime;
+          setResponse({
+            error: err.message,
+            duration: Math.round(duration),
+            timestamp: new Date().toISOString()
+          });
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const loadFromHistory = (item) => {
+        setUrl(item.url);
+        setMethod(item.method);
+      };
+
+      const clearHistory = () => {
+        setHistory([]);
+        localStorage.removeItem('requestHistory');
+      };
+
+      const copyAsCurl = () => {
+        let curl = `curl -X ${method} '${url}'`;
+        headers.forEach(h => {
+          if (h.key && h.value) {
+            curl += ` -H '${h.key}: ${h.value}'`;
+          }
+        });
+        if (body && ['POST', 'PUT', 'PATCH'].includes(method)) {
+          curl += ` -d '${body}'`;
+        }
+        navigator.clipboard.writeText(curl);
+      };
+
+      const downloadResponse = () => {
+        if (!response || !response.body) return;
+        const blob = new Blob([response.body], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `response-${Date.now()}.txt`;
+        a.click();
+      };
+
+      const toggleTheme = () => {
+        setTheme(prev => prev === 'light' ? 'dark' : 'light');
+      };
+
+      const themeClasses = theme === 'light' 
+        ? 'bg-gradient-to-br from-slate-50 via-slate-100 to-slate-50 text-slate-900'
+        : 'bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100';
+      
+      const cardClass = theme === 'light'
+        ? 'bg-white/70 border-slate-300'
+        : 'bg-slate-800/50 border-slate-700';
+      
+      const inputClass = theme === 'light'
+        ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-500 focus:border-blue-500'
+        : 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500';
+      
+      const textClass = theme === 'light' ? 'text-slate-900' : 'text-white';
+      const mutedTextClass = theme === 'light' ? 'text-slate-600' : 'text-slate-400';
+
+      const renderResponseContent = () => {
+        if (!response || response.error) return null;
+
+        const contentType = response.headers['content-type'] || '';
+
+        if (activeTab === 'rendered' && contentType.includes('text/html')) {
+          return (
+            <iframe
+              ref={iframeRef}
+              srcDoc={response.body}
+              className="w-full h-96 border rounded"
+              sandbox="allow-same-origin"
+            />
+          );
+        }
+
+        if (activeTab === 'pretty' && contentType.includes('application/json')) {
+          try {
+            const parsed = JSON.parse(response.body);
+            return (
+              <pre className={`${theme === 'light' ? 'bg-slate-100 text-slate-900' : 'bg-slate-700 text-slate-100'} p-4 rounded overflow-auto max-h-96 text-sm`}>
+                {JSON.stringify(parsed, null, 2)}
+              </pre>
+            );
+          } catch {
+            return <pre className={`${theme === 'light' ? 'bg-slate-100 text-slate-900' : 'bg-slate-700 text-slate-100'} p-4 rounded overflow-auto max-h-96 text-sm`}>{response.body}</pre>;
+          }
+        }
+
+        return (
+          <pre className={`${theme === 'light' ? 'bg-slate-100 text-slate-900' : 'bg-slate-700 text-slate-100'} p-4 rounded overflow-auto max-h-96 text-sm`}>
+            {response.body}
+          </pre>
+        );
+      };
+
+      return (
+        <div className={`min-h-screen ${themeClasses}`}>
+          <div className="container mx-auto px-4 py-6 max-w-7xl">
+            {/* Header */}
+            <div className="mb-8 flex justify-between items-center">
+              <div>
+                <h1 className={`text-3xl font-bold ${textClass} mb-2`}>Web Request Inspector</h1>
+                <p className={mutedTextClass}>Test HTTP requests with detailed response analysis</p>
+              </div>
+              <button
+                onClick={toggleTheme}
+                className={`px-4 py-2 rounded ${theme === 'light' ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-900'} hover:opacity-80`}
+              >
+                {theme === 'light' ? '🌙 Dark' : '☀️ Light'}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+              {/* History Sidebar */}
+              <div className={`lg:col-span-1 ${cardClass} rounded-lg p-4 border`}>
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className={`text-lg font-semibold ${textClass}`}>History</h2>
+                  {history.length > 0 && (
+                    <button onClick={clearHistory} className="text-red-400 hover:text-red-300">
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {history.length === 0 ? (
+                    <p className={`${mutedTextClass} text-sm`}>No requests yet</p>
+                  ) : (
+                    history.map(item => (
+                      <div
+                        key={item.id}
+                        onClick={() => loadFromHistory(item)}
+                        className={`${theme === 'light' ? 'bg-slate-100 border-slate-300 hover:bg-slate-200' : 'bg-slate-700/50 border-slate-600 hover:bg-slate-700'} p-3 rounded border cursor-pointer transition-colors`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+                            item.status >= 200 && item.status < 300 ? 'bg-green-500/20 text-green-400' :
+                            item.status >= 400 ? 'bg-red-500/20 text-red-400' :
+                            'bg-yellow-500/20 text-yellow-400'
+                          }`}>
+                            {item.method}
+                          </span>
+                          <span className={`text-xs ${mutedTextClass}`}>{item.status}</span>
+                        </div>
+                        <p className={`text-sm ${textClass} truncate mb-1`}>{item.url}</p>
+                        <p className={`text-xs ${mutedTextClass}`}>
+                          {item.duration}ms · {new Date(item.timestamp).toLocaleTimeString()}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Main Panel */}
+              <div className="lg:col-span-3 space-y-6">
+                {/* Request Configuration */}
+                <div className={`${cardClass} rounded-lg border p-6`}>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className={`text-lg font-semibold ${textClass}`}>Request</h2>
+                    <div className="flex items-center gap-2">
+                      {isSecure ? (
+                        <div className="flex items-center gap-1 text-green-500 text-sm">
+                          <Lock size={16} />
+                          <span>Secure</span>
+                        </div>
+                      ) : url.startsWith('http://') ? (
+                        <div className="flex items-center gap-1 text-orange-500 text-sm">
+                          <Unlock size={16} />
+                          <span>Unsecure</span>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    {/* URL and Method */}
+                    <div className="flex gap-2">
+                      <select
+                        value={method}
+                        onChange={(e) => setMethod(e.target.value)}
+                        className={`${inputClass} rounded px-3 py-2 font-medium focus:outline-none`}
+                      >
+                        <option>GET</option>
+                        <option>POST</option>
+                        <option>PUT</option>
+                        <option>PATCH</option>
+                        <option>DELETE</option>
+                        <option>HEAD</option>
+                        <option>OPTIONS</option>
+                      </select>
+                      
+                      <input
+                        type="text"
+                        value={url}
+                        onChange={(e) => setUrl(e.target.value)}
+                        placeholder="https://api.example.com"
+                        className={`flex-1 ${inputClass} rounded px-4 py-2 focus:outline-none`}
+                      />
+                    </div>
+
+                    {/* Headers */}
+                    <div>
+                      <div className="flex justify-between items-center mb-2">
+                        <label className={`text-sm font-medium ${mutedTextClass}`}>Custom Headers</label>
+                        <button
+                          onClick={addHeader}
+                          className="text-sm text-blue-500 hover:text-blue-400"
+                        >
+                          + Add Header
+                        </button>
+                      </div>
+                      <div className="space-y-2">
+                        {headers.map((header, index) => (
+                          <div key={index} className="flex gap-2">
+                            <input
+                              type="text"
+                              value={header.key}
+                              onChange={(e) => updateHeader(index, 'key', e.target.value)}
+                              placeholder="Header name"
+                              className={`flex-1 ${inputClass} rounded px-3 py-2 text-sm focus:outline-none`}
+                            />
+                            <input
+                              type="text"
+                              value={header.value}
+                              onChange={(e) => updateHeader(index, 'value', e.target.value)}
+                              placeholder="Header value"
+                              className={`flex-1 ${inputClass} rounded px-3 py-2 text-sm focus:outline-none`}
+                            />
+                            <button
+                              onClick={() => removeHeader(index)}
+                              className="text-red-400 hover:text-red-300 px-2"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Body */}
+                    {['POST', 'PUT', 'PATCH'].includes(method) && (
+                      <div>
+                        <label className={`block text-sm font-medium ${mutedTextClass} mb-2`}>Request Body</label>
+                        <textarea
+                          value={body}
+                          onChange={(e) => setBody(e.target.value)}
+                          rows={6}
+                          className={`w-full ${inputClass} rounded px-4 py-2 font-mono text-sm focus:outline-none`}
+                          placeholder='{"key": "value"}'
+                        />
+                      </div>
+                    )}
+
+                    {/* Options */}
+                    <div className="flex gap-4 items-center">
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={followRedirects}
+                          onChange={(e) => setFollowRedirects(e.target.checked)}
+                          className="rounded"
+                        />
+                        <span className={mutedTextClass}>Follow Redirects</span>
+                      </label>
+                      
+                      <div className="flex items-center gap-2">
+                        <label className={`text-sm ${mutedTextClass}`}>Timeout:</label>
+                        <input
+                          type="number"
+                          value={timeout}
+                          onChange={(e) => setTimeout(parseInt(e.target.value))}
+                          className={`${inputClass} rounded px-3 py-1 text-sm w-20 focus:outline-none`}
+                          min="1"
+                          max="120"
+                        />
+                        <span className={`text-sm ${mutedTextClass}`}>seconds</span>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-3 pt-2">
+                      <button
+                        onClick={executeRequest}
+                        disabled={!url || loading}
+                        className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-medium rounded"
+                      >
+                        <Send />
+                        {loading ? 'Sending...' : 'Send Request'}
+                      </button>
+                      
+                      {response && (
+                        <>
+                          <button
+                            onClick={copyAsCurl}
+                            className={`flex items-center gap-2 px-4 py-2.5 ${theme === 'light' ? 'bg-slate-200 hover:bg-slate-300 text-slate-900' : 'bg-slate-700 hover:bg-slate-600 text-white'} font-medium rounded`}
+                          >
+                            <Copy />
+                            Copy as cURL
+                          </button>
+                          
+                          <button
+                            onClick={downloadResponse}
+                            className={`flex items-center gap-2 px-4 py-2.5 ${theme === 'light' ? 'bg-slate-200 hover:bg-slate-300 text-slate-900' : 'bg-slate-700 hover:bg-slate-600 text-white'} font-medium rounded`}
+                          >
+                            <Download />
+                            Download
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Response Panel */}
+                {response && (
+                  <div className={`${cardClass} rounded-lg border p-6`}>
+                    <h2 className={`text-lg font-semibold ${textClass} mb-4`}>Response</h2>
+
+                    {response.error ? (
+                      <div className="bg-red-500/10 border border-red-500/30 rounded p-4">
+                        <p className="text-red-400 font-semibold mb-2">Request Failed</p>
+                        <p className="text-red-300 text-sm">{response.error}</p>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Tabs */}
+                        <div className="flex gap-2 mb-4 border-b border-slate-600 pb-2 overflow-x-auto">
+                          <button
+                            onClick={() => setActiveTab('overview')}
+                            className={`px-4 py-2 text-sm font-medium rounded-t whitespace-nowrap ${activeTab === 'overview' ? (theme === 'light' ? 'bg-slate-200 text-slate-900' : 'bg-slate-700 text-white') : mutedTextClass}`}
+                          >
+                            Overview
+                          </button>
+                          <button
+                            onClick={() => setActiveTab('headers')}
+                            className={`px-4 py-2 text-sm font-medium rounded-t whitespace-nowrap ${activeTab === 'headers' ? (theme === 'light' ? 'bg-slate-200 text-slate-900' : 'bg-slate-700 text-white') : mutedTextClass}`}
+                          >
+                            Headers
+                          </button>
+                          {response.certificate && (
+                            <button
+                              onClick={() => setActiveTab('certificate')}
+                              className={`px-4 py-2 text-sm font-medium rounded-t whitespace-nowrap ${activeTab === 'certificate' ? (theme === 'light' ? 'bg-slate-200 text-slate-900' : 'bg-slate-700 text-white') : mutedTextClass}`}
+                            >
+                              Certificate
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setActiveTab('raw')}
+                            className={`px-4 py-2 text-sm font-medium rounded-t whitespace-nowrap ${activeTab === 'raw' ? (theme === 'light' ? 'bg-slate-200 text-slate-900' : 'bg-slate-700 text-white') : mutedTextClass}`}
+                          >
+                            Raw
+                          </button>
+                          <button
+                            onClick={() => setActiveTab('pretty')}
+                            className={`px-4 py-2 text-sm font-medium rounded-t whitespace-nowrap ${activeTab === 'pretty' ? (theme === 'light' ? 'bg-slate-200 text-slate-900' : 'bg-slate-700 text-white') : mutedTextClass}`}
+                          >
+                            Pretty
+                          </button>
+                          {response.headers['content-type']?.includes('text/html') && (
+                            <button
+                              onClick={() => setActiveTab('rendered')}
+                              className={`px-4 py-2 text-sm font-medium rounded-t whitespace-nowrap ${activeTab === 'rendered' ? (theme === 'light' ? 'bg-slate-200 text-slate-900' : 'bg-slate-700 text-white') : mutedTextClass}`}
+                            >
+                              Rendered
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Tab Content */}
+                        {activeTab === 'overview' && (
+                          <div className="space-y-4">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                              <div className={`${theme === 'light' ? 'bg-slate-100' : 'bg-slate-700/50'} p-3 rounded`}>
+                                <p className={`text-xs ${mutedTextClass} mb-1`}>Status</p>
+                                <p className={`text-lg font-semibold ${response.status >= 200 && response.status < 300 ? 'text-green-400' : 'text-red-400'}`}>
+                                  {response.status}
+                                </p>
+                              </div>
+                              <div className={`${theme === 'light' ? 'bg-slate-100' : 'bg-slate-700/50'} p-3 rounded`}>
+                                <p className={`text-xs ${mutedTextClass} mb-1`}>Duration</p>
+                                <p className={`text-lg font-semibold ${textClass}`}>{response.duration}ms</p>
+                              </div>
+                              <div className={`${theme === 'light' ? 'bg-slate-100' : 'bg-slate-700/50'} p-3 rounded`}>
+                                <p className={`text-xs ${mutedTextClass} mb-1`}>Size</p>
+                                <p className={`text-lg font-semibold ${textClass}`}>
+                                  {response.body ? `${(response.body.length / 1024).toFixed(2)} KB` : 'N/A'}
+                                </p>
+                              </div>
+                              <div className={`${theme === 'light' ? 'bg-slate-100' : 'bg-slate-700/50'} p-3 rounded`}>
+                                <p className={`text-xs ${mutedTextClass} mb-1`}>Protocol</p>
+                                <p className={`text-lg font-semibold ${textClass}`}>HTTP/1.1</p>
+                              </div>
+                            </div>
+
+                            {response.redirectChain && response.redirectChain.length > 0 && (
+                              <div>
+                                <h3 className={`text-sm font-semibold ${textClass} mb-2`}>Redirect Chain</h3>
+                                <div className="space-y-1">
+                                  {response.redirectChain.map((redirect, i) => (
+                                    <div key={i} className={`text-sm ${mutedTextClass} pl-4 border-l-2 border-blue-500`}>
+                                      {i + 1}. {redirect.status} → {redirect.location}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            <div>
+                              <h3 className={`text-sm font-semibold ${textClass} mb-2`}>Timing</h3>
+                              <div className={`${theme === 'light' ? 'bg-slate-100' : 'bg-slate-700/50'} p-3 rounded space-y-1`}>
+                                {response.timing && Object.entries(response.timing).map(([key, value]) => (
+                                  <div key={key} className="flex justify-between text-sm">
+                                    <span className={mutedTextClass}>{key}:</span>
+                                    <span className={textClass}>{value}ms</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {activeTab === 'headers' && (
+                          <div className="space-y-4">
+                            <div>
+                              <h3 className={`text-sm font-semibold ${textClass} mb-2`}>Response Headers</h3>
+                              <div className={`${theme === 'light' ? 'bg-slate-100' : 'bg-slate-700/50'} p-3 rounded space-y-1`}>
+                                {Object.entries(response.headers || {}).map(([key, value]) => (
+                                  <div key={key} className="flex gap-2 text-sm font-mono">
+                                    <span className="text-blue-400">{key}:</span>
+                                    <span className={textClass}>{value}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div>
+                              <h3 className={`text-sm font-semibold ${textClass} mb-2`}>Request Headers Sent</h3>
+                              <div className={`${theme === 'light' ? 'bg-slate-100' : 'bg-slate-700/50'} p-3 rounded space-y-1`}>
+                                {Object.entries(response.request?.headers || {}).map(([key, value]) => (
+                                  <div key={key} className="flex gap-2 text-sm font-mono">
+                                    <span className="text-green-400">{key}:</span>
+                                    <span className={textClass}>{value}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {activeTab === 'certificate' && response.certificate && (
+                          <div className="space-y-4">
+                            <div>
+                              <h3 className={`text-sm font-semibold ${textClass} mb-2`}>TLS/SSL Information</h3>
+                              <div className={`${theme === 'light' ? 'bg-slate-100' : 'bg-slate-700/50'} p-4 rounded space-y-3`}>
+                                {response.certificate.hostname && (
+                                  <div>
+                                    <span className={`text-sm ${mutedTextClass}`}>Hostname:</span>
+                                    <p className={`text-sm font-mono ${textClass} mt-1`}>{response.certificate.hostname}</p>
+                                  </div>
+                                )}
+                                {response.certificate.tlsVersion && (
+                                  <div>
+                                    <span className={`text-sm ${mutedTextClass}`}>TLS Version:</span>
+                                    <p className={`text-sm font-mono ${textClass} mt-1`}>{response.certificate.tlsVersion}</p>
+                                  </div>
+                                )}
+                                {response.certificate.tlsCipher && (
+                                  <div>
+                                    <span className={`text-sm ${mutedTextClass}`}>Cipher Suite:</span>
+                                    <p className={`text-sm font-mono ${textClass} mt-1`}>{response.certificate.tlsCipher}</p>
+                                  </div>
+                                )}
+                                {response.certificate.httpProtocol && (
+                                  <div>
+                                    <span className={`text-sm ${mutedTextClass}`}>HTTP Protocol:</span>
+                                    <p className={`text-sm font-mono ${textClass} mt-1`}>{response.certificate.httpProtocol}</p>
+                                  </div>
+                                )}
+                                {response.certificate.colo && (
+                                  <div>
+                                    <span className={`text-sm ${mutedTextClass}`}>Cloudflare Colo:</span>
+                                    <p className={`text-sm font-mono ${textClass} mt-1`}>{response.certificate.colo}</p>
+                                  </div>
+                                )}
+                                {response.certificate.country && (
+                                  <div>
+                                    <span className={`text-sm ${mutedTextClass}`}>Country:</span>
+                                    <p className={`text-sm font-mono ${textClass} mt-1`}>{response.certificate.country}</p>
+                                  </div>
+                                )}
+                                {response.certificate.asn && (
+                                  <div>
+                                    <span className={`text-sm ${mutedTextClass}`}>ASN:</span>
+                                    <p className={`text-sm font-mono ${textClass} mt-1`}>{response.certificate.asn}</p>
+                                  </div>
+                                )}
+                              </div>
+                              
+                              <button
+                                onClick={() => {
+                                  const blob = new Blob([JSON.stringify(response.certificate, null, 2)], { type: 'application/json' });
+                                  const url = URL.createObjectURL(blob);
+                                  const a = document.createElement('a');
+                                  a.href = url;
+                                  a.download = `cert-info-${new Date().getTime()}.json`;
+                                  a.click();
+                                }}
+                                className="mt-3 flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded"
+                              >
+                                <Download />
+                                Download Certificate Info
+                              </button>
+                              
+                              <p className={`text-xs ${mutedTextClass} mt-2`}>
+                                Note: Full certificate chain not available via browser. This shows TLS connection details from Cloudflare.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {(activeTab === 'raw' || activeTab === 'pretty' || activeTab === 'rendered') && renderResponseContent()}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<WebRequestInspector />, document.getElementById('root'));
+  </script>
+</body>
+</html>
