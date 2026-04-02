@@ -303,12 +303,13 @@
               );
             }
           } else if (contentType.includes('xml')) {
-            // Pretty print XML
             try {
               const parser = new DOMParser();
               const xmlDoc = parser.parseFromString(response.body, 'text/xml');
               const serializer = new XMLSerializer();
-              const formatted = serializer.serializeToString(xmlDoc);
+              let formatted = serializer.serializeToString(xmlDoc);
+              // Basic XML formatting
+              formatted = formatted.replace(/></g, '>\n<');
               return (
                 <pre className={`${theme === 'light' ? 'bg-slate-100 text-slate-900' : 'bg-slate-700 text-slate-100'} p-4 rounded overflow-auto max-h-96 text-sm`}>
                   {formatted}
@@ -321,10 +322,28 @@
                 </pre>
               );
             }
+          } else if (contentType.includes('text/html')) {
+            // Pretty HTML
+            let formatted = response.body;
+            try {
+              formatted = formatted.replace(/></g, '>\n<').replace(/\n\s*\n/g, '\n');
+            } catch {}
+            return (
+              <pre className={`${theme === 'light' ? 'bg-slate-100 text-slate-900' : 'bg-slate-700 text-slate-100'} p-4 rounded overflow-auto max-h-96 text-sm`}>
+                {formatted}
+              </pre>
+            );
+          } else if (contentType.includes('javascript') || contentType.includes('text/css')) {
+            // Pretty JS/CSS - just display with proper spacing
+            return (
+              <pre className={`${theme === 'light' ? 'bg-slate-100 text-slate-900' : 'bg-slate-700 text-slate-100'} p-4 rounded overflow-auto max-h-96 text-sm`}>
+                {response.body}
+              </pre>
+            );
           } else {
             return (
               <div className="text-center py-8">
-                <p className={mutedTextClass}>Pretty view only available for JSON and XML responses</p>
+                <p className={mutedTextClass}>Pretty view available for JSON, XML, HTML, JavaScript, and CSS</p>
                 <p className={`text-sm ${mutedTextClass} mt-2`}>Current content type: {contentType}</p>
               </div>
             );
@@ -616,6 +635,14 @@
                           >
                             Headers
                           </button>
+                          {response.cookies && response.cookies.length > 0 && (
+                            <button
+                              onClick={() => setActiveTab('cookies')}
+                              className={`px-4 py-2 text-sm font-medium rounded-t whitespace-nowrap ${activeTab === 'cookies' ? (theme === 'light' ? 'bg-slate-200 text-slate-900' : 'bg-slate-700 text-white') : mutedTextClass}`}
+                            >
+                              Cookies ({response.cookies.length})
+                            </button>
+                          )}
                           {response.certificate && (
                             <button
                               onClick={() => setActiveTab('certificate')}
@@ -795,6 +822,59 @@
                                 Note: Full certificate chain not available via browser. This shows TLS connection details from Cloudflare.
                               </p>
                             </div>
+                          </div>
+                        )}
+
+                        {activeTab === 'cookies' && response.cookies && (
+                          <div className="space-y-4">
+                            <h3 className={`text-sm font-semibold ${textClass} mb-2`}>Cookies Received</h3>
+                            {response.cookies.map((cookie, index) => (
+                              <div key={index} className={`${theme === 'light' ? 'bg-slate-100' : 'bg-slate-700/50'} p-4 rounded`}>
+                                <div className="space-y-2">
+                                  <div>
+                                    <span className={`text-sm font-semibold ${textClass}`}>{cookie.name}</span>
+                                    <p className={`text-sm font-mono ${mutedTextClass} mt-1 break-all`}>{cookie.value}</p>
+                                  </div>
+                                  {cookie.domain && (
+                                    <div className="text-xs">
+                                      <span className={mutedTextClass}>Domain:</span>
+                                      <span className={`${textClass} ml-2`}>{cookie.domain}</span>
+                                    </div>
+                                  )}
+                                  {cookie.path && (
+                                    <div className="text-xs">
+                                      <span className={mutedTextClass}>Path:</span>
+                                      <span className={`${textClass} ml-2`}>{cookie.path}</span>
+                                    </div>
+                                  )}
+                                  {cookie.expires && (
+                                    <div className="text-xs">
+                                      <span className={mutedTextClass}>Expires:</span>
+                                      <span className={`${textClass} ml-2`}>{cookie.expires}</span>
+                                    </div>
+                                  )}
+                                  <div className="flex gap-3 text-xs">
+                                    {cookie.httpOnly && <span className="text-orange-400">HttpOnly</span>}
+                                    {cookie.secure && <span className="text-green-400">Secure</span>}
+                                    {cookie.sameSite && <span className={mutedTextClass}>SameSite: {cookie.sameSite}</span>}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                            <button
+                              onClick={() => {
+                                const blob = new Blob([JSON.stringify(response.cookies, null, 2)], { type: 'application/json' });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `cookies-${new Date().getTime()}.json`;
+                                a.click();
+                              }}
+                              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded"
+                            >
+                              <Download />
+                              Download Cookies
+                            </button>
                           </div>
                         )}
 
