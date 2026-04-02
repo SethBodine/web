@@ -94,6 +94,37 @@ export async function onRequestPost({ request, env }) {
     // Get response body
     const responseBody = await response.text();
     
+    // Parse cookies from Set-Cookie headers
+    const cookies = [];
+    const setCookieHeaders = response.headers.get('set-cookie');
+    if (setCookieHeaders) {
+      // Note: In Workers, set-cookie may be a single string or need special handling
+      const cookieStrings = setCookieHeaders.split(',').map(s => s.trim());
+      
+      cookieStrings.forEach(cookieStr => {
+        const parts = cookieStr.split(';').map(p => p.trim());
+        const [nameValue, ...attributes] = parts;
+        const [name, value] = nameValue.split('=');
+        
+        const cookie = { name, value };
+        
+        attributes.forEach(attr => {
+          const [key, val] = attr.split('=');
+          const lowerKey = key.toLowerCase();
+          
+          if (lowerKey === 'domain') cookie.domain = val;
+          else if (lowerKey === 'path') cookie.path = val;
+          else if (lowerKey === 'expires') cookie.expires = val;
+          else if (lowerKey === 'max-age') cookie.maxAge = val;
+          else if (lowerKey === 'httponly') cookie.httpOnly = true;
+          else if (lowerKey === 'secure') cookie.secure = true;
+          else if (lowerKey === 'samesite') cookie.sameSite = val;
+        });
+        
+        cookies.push(cookie);
+      });
+    }
+    
     // Collect response data
     const result = {
       status: response.status,
@@ -103,6 +134,7 @@ export async function onRequestPost({ request, env }) {
       timing: timings,
       redirectChain: redirectChain.length > 0 ? redirectChain : undefined,
       certificate: certInfo,
+      cookies: cookies.length > 0 ? cookies : undefined,
       request: {
         url,
         method,
