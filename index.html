@@ -78,6 +78,8 @@
       const [body, setBody] = useState('');
       const [followRedirects, setFollowRedirects] = useState(true);
       const [timeout, setTimeout] = useState(30);
+      const [userAgent, setUserAgent] = useState('mozilla-linux');
+      const [customUserAgent, setCustomUserAgent] = useState('');
       
       const [response, setResponse] = useState(null);
       const [loading, setLoading] = useState(false);
@@ -86,12 +88,31 @@
       const [history, setHistory] = useState([]);
       const iframeRef = useRef(null);
 
+      const userAgents = {
+        'mozilla-windows': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'mozilla-mac': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'mozilla-linux': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'safari-mac': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
+        'safari-ios': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1',
+        'chrome-android': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+        'curl': 'curl/8.4.0',
+        'custom': ''
+      };
+
       useEffect(() => {
         const saved = JSON.parse(localStorage.getItem('requestHistory') || '[]');
         setHistory(saved);
       }, []);
 
       const isSecure = url.startsWith('https://');
+
+      const normalizeUrl = (inputUrl) => {
+        if (!inputUrl) return '';
+        if (inputUrl.startsWith('http://') || inputUrl.startsWith('https://')) {
+          return inputUrl;
+        }
+        return 'https://' + inputUrl;
+      };
 
       const addHeader = () => {
         setHeaders([...headers, { key: '', value: '' }]);
@@ -120,8 +141,16 @@
             }
           });
 
+          // Add User-Agent if selected
+          const selectedUserAgent = userAgent === 'custom' ? customUserAgent : userAgents[userAgent];
+          if (selectedUserAgent) {
+            customHeaders['User-Agent'] = selectedUserAgent;
+          }
+
+          const normalizedUrl = normalizeUrl(url);
+
           const requestData = {
-            url,
+            url: normalizedUrl,
             method,
             headers: customHeaders,
             body: ['POST', 'PUT', 'PATCH'].includes(method) ? body : null,
@@ -147,7 +176,7 @@
             duration: Math.round(duration),
             timestamp: new Date().toISOString(),
             request: {
-              url,
+              url: normalizedUrl,
               method,
               headers: customHeaders,
               body: requestData.body
@@ -159,7 +188,7 @@
           // Save to history
           const historyEntry = {
             id: Date.now(),
-            url,
+            url: normalizedUrl,
             method,
             status: data.status,
             duration: Math.round(duration),
@@ -193,7 +222,14 @@
       };
 
       const copyAsCurl = () => {
-        let curl = `curl -X ${method} '${url}'`;
+        const normalizedUrl = normalizeUrl(url);
+        let curl = `curl -X ${method} '${normalizedUrl}'`;
+        
+        const selectedUserAgent = userAgent === 'custom' ? customUserAgent : userAgents[userAgent];
+        if (selectedUserAgent) {
+          curl += ` -A '${selectedUserAgent}'`;
+        }
+        
         headers.forEach(h => {
           if (h.key && h.value) {
             curl += ` -H '${h.key}: ${h.value}'`;
@@ -250,24 +286,60 @@
           );
         }
 
-        if (activeTab === 'pretty' && contentType.includes('application/json')) {
-          try {
-            const parsed = JSON.parse(response.body);
+        if (activeTab === 'pretty') {
+          if (contentType.includes('application/json') || contentType.includes('text/json')) {
+            try {
+              const parsed = JSON.parse(response.body);
+              return (
+                <pre className={`${theme === 'light' ? 'bg-slate-100 text-slate-900' : 'bg-slate-700 text-slate-100'} p-4 rounded overflow-auto max-h-96 text-sm`}>
+                  {JSON.stringify(parsed, null, 2)}
+                </pre>
+              );
+            } catch {
+              return (
+                <pre className={`${theme === 'light' ? 'bg-slate-100 text-slate-900' : 'bg-slate-700 text-slate-100'} p-4 rounded overflow-auto max-h-96 text-sm`}>
+                  {response.body}
+                </pre>
+              );
+            }
+          } else if (contentType.includes('xml')) {
+            // Pretty print XML
+            try {
+              const parser = new DOMParser();
+              const xmlDoc = parser.parseFromString(response.body, 'text/xml');
+              const serializer = new XMLSerializer();
+              const formatted = serializer.serializeToString(xmlDoc);
+              return (
+                <pre className={`${theme === 'light' ? 'bg-slate-100 text-slate-900' : 'bg-slate-700 text-slate-100'} p-4 rounded overflow-auto max-h-96 text-sm`}>
+                  {formatted}
+                </pre>
+              );
+            } catch {
+              return (
+                <pre className={`${theme === 'light' ? 'bg-slate-100 text-slate-900' : 'bg-slate-700 text-slate-100'} p-4 rounded overflow-auto max-h-96 text-sm`}>
+                  {response.body}
+                </pre>
+              );
+            }
+          } else {
             return (
-              <pre className={`${theme === 'light' ? 'bg-slate-100 text-slate-900' : 'bg-slate-700 text-slate-100'} p-4 rounded overflow-auto max-h-96 text-sm`}>
-                {JSON.stringify(parsed, null, 2)}
-              </pre>
+              <div className="text-center py-8">
+                <p className={mutedTextClass}>Pretty view only available for JSON and XML responses</p>
+                <p className={`text-sm ${mutedTextClass} mt-2`}>Current content type: {contentType}</p>
+              </div>
             );
-          } catch {
-            return <pre className={`${theme === 'light' ? 'bg-slate-100 text-slate-900' : 'bg-slate-700 text-slate-100'} p-4 rounded overflow-auto max-h-96 text-sm`}>{response.body}</pre>;
           }
         }
 
-        return (
-          <pre className={`${theme === 'light' ? 'bg-slate-100 text-slate-900' : 'bg-slate-700 text-slate-100'} p-4 rounded overflow-auto max-h-96 text-sm`}>
-            {response.body}
-          </pre>
-        );
+        if (activeTab === 'raw') {
+          return (
+            <pre className={`${theme === 'light' ? 'bg-slate-100 text-slate-900' : 'bg-slate-700 text-slate-100'} p-4 rounded overflow-auto max-h-96 text-sm`}>
+              {response.body}
+            </pre>
+          );
+        }
+
+        return null;
       };
 
       return (
@@ -412,6 +484,36 @@
                           </div>
                         ))}
                       </div>
+                    </div>
+
+                    {/* User Agent */}
+                    <div>
+                      <label className={`block text-sm font-medium ${mutedTextClass} mb-2`}>User Agent</label>
+                      <div className="flex gap-2">
+                        <select
+                          value={userAgent}
+                          onChange={(e) => setUserAgent(e.target.value)}
+                          className={`flex-1 ${inputClass} rounded px-3 py-2 text-sm focus:outline-none`}
+                        >
+                          <option value="mozilla-windows">Chrome - Windows</option>
+                          <option value="mozilla-mac">Chrome - macOS</option>
+                          <option value="mozilla-linux">Chrome - Linux</option>
+                          <option value="safari-mac">Safari - macOS</option>
+                          <option value="safari-ios">Safari - iOS</option>
+                          <option value="chrome-android">Chrome - Android</option>
+                          <option value="curl">cURL</option>
+                          <option value="custom">Custom</option>
+                        </select>
+                      </div>
+                      {userAgent === 'custom' && (
+                        <input
+                          type="text"
+                          value={customUserAgent}
+                          onChange={(e) => setCustomUserAgent(e.target.value)}
+                          placeholder="Enter custom user agent"
+                          className={`w-full mt-2 ${inputClass} rounded px-3 py-2 text-sm focus:outline-none`}
+                        />
+                      )}
                     </div>
 
                     {/* Body */}
