@@ -1,4 +1,4 @@
-import { h, render }                         from 'https://esm.sh/preact@10.23.2';
+import { h, render, Fragment }               from 'https://esm.sh/preact@10.23.2';
 import { useState, useEffect, useRef }       from 'https://esm.sh/preact@10.23.2/hooks';
 import htm                                   from 'https://esm.sh/htm@3.1.1';
 const html = htm.bind(h);
@@ -612,7 +612,7 @@ function WebRequestInspector() {
                       <p class="text-red-300 text-sm font-mono">${response.error}</p>
                     </div>`
                   : html`
-                    <>
+                    <${Fragment}>
                       <!-- Tabs -->
                       <div class="flex gap-2 mb-4 border-b border-slate-600 pb-2 overflow-x-auto">
                         ${tabBtn('overview',  'Overview')}
@@ -843,7 +843,7 @@ ${JSON.stringify(response.jwtInfo.payload, null, 2)}</pre>
 
                       <!-- Raw / Pretty / Rendered -->
                       ${(activeTab === 'raw' || activeTab === 'pretty' || activeTab === 'rendered') && renderResponseContent()}
-                    </>`}
+                    </${Fragment}>`}
               </div>`}
 
           </div><!-- /main panel -->
