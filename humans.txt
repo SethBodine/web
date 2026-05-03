@@ -1,0 +1,16 @@
+/* TEAM */
+Owner: insecure.co.nz
+Location: New Zealand
+Industry: Information Security
+
+/* SITE */
+Name: Web Request Inspector
+Description: A browser-based HTTP proxy tool for inspecting web requests, headers, cookies, and TLS certificates.
+Standards: HTML5, HTTP/1.1, RFC 7230
+Components: Preact 10, htm, Tailwind CSS, Cloudflare Workers
+Hosted: Cloudflare Pages
+
+/* THANKS */
+OWASP — https://owasp.org
+Certificate Transparency — https://certificate.transparency.dev
+crt.sh — https://crt.sh

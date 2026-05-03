@@ -1,0 +1,12 @@
+# robots.txt — web.insecure.co.nz
+# insecure.co.nz: security and information tools for personal use
+#
+# This site is intentionally not indexed. It is a personal tool for
+# security research and education — not a public search destination.
+# See also: /humans.txt
+
+User-agent: *
+Disallow: /
+
+# Sitemap is provided for completeness; indexers are still asked not to crawl.
+Sitemap: https://web.insecure.co.nz/sitemap.xml
