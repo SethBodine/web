@@ -14,7 +14,7 @@
  * Discord abuse monitoring:
  *   Set DISCORD_WEBHOOK in Cloudflare Pages → Settings → Environment Variables.
  *   The webhook URL is NEVER exposed to the browser or page source.
- *   Notifications fire via ctx.waitUntil() after the response is sent — zero
+ *   Notifications fire via waitUntil() after the response is sent — zero
  *   latency impact on the end user.
  *
  *   What is logged:    client IP, target URL, method, status, size, duration,
@@ -139,7 +139,7 @@ async function getCertInfo(hostname) {
 /**
  * Non-blocking Discord notification for abuse monitoring.
  *
- * Fired via ctx.waitUntil() — executes after the response is already sent
+ * Fired via waitUntil() — executes after the response is already sent
  * to the browser, so it has zero impact on end-user latency.
  *
  * NEVER logs: header values, auth tokens, request body, response body.
@@ -216,7 +216,7 @@ async function notifyDiscord(webhookUrl, {
 
 // ─── Handlers ─────────────────────────────────────────────────────────────────
 
-export async function onRequestPost({ request, env, ctx }) {
+export async function onRequestPost({ request, env, waitUntil }) {
   const origin   = request.headers.get('Origin');
   const clientIP = request.headers.get('CF-Connecting-IP')
                 || request.headers.get('X-Forwarded-For')
@@ -224,7 +224,7 @@ export async function onRequestPost({ request, env, ctx }) {
 
   // 1. Origin validation
   if (!validateOrigin(request)) {
-    ctx.waitUntil(notifyDiscord(env.DISCORD_WEBHOOK, {
+    waitUntil(notifyDiscord(env.DISCORD_WEBHOOK, {
       clientIP, targetUrl: '—', method: '—', isBlocked: true,
       error: `Unauthorised origin: ${origin || '(none)'}`,
       timestamp: new Date().toISOString()
@@ -319,7 +319,7 @@ export async function onRequestPost({ request, env, ctx }) {
     const duration = Date.now() - startTime;
 
     // 8. Non-blocking Discord notification (after response sent)
-    ctx.waitUntil(notifyDiscord(env.DISCORD_WEBHOOK, {
+    waitUntil(notifyDiscord(env.DISCORD_WEBHOOK, {
       clientIP,
       targetUrl:  url,
       method:     upperMethod,
@@ -355,7 +355,7 @@ export async function onRequestPost({ request, env, ctx }) {
       : (error?.message || '').toLowerCase().includes('failed to fetch') ? 'Connection failed'
       : 'Proxy error';
 
-    ctx.waitUntil(notifyDiscord(env.DISCORD_WEBHOOK, {
+    waitUntil(notifyDiscord(env.DISCORD_WEBHOOK, {
       clientIP, targetUrl, method, duration, error: errorLabel, timestamp: new Date().toISOString()
     }));
 
