@@ -1,0 +1,9 @@
+# Cloudflare Pages _redirects
+# Redirects any direct access to documentation files back to the app.
+# Reference: https://developers.cloudflare.com/pages/configuration/redirects/
+
+/CHANGELOG      /   301
+/CHANGELOG.md   /   301
+/README         /   301
+/README.md      /   301
+/docs/*         /   301

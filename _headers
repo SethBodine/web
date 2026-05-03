@@ -7,6 +7,6 @@
   X-Frame-Options: SAMEORIGIN
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
-  Content-Security-Policy: default-src 'self'; script-src 'self' https://esm.sh https://cdn.tailwindcss.com 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; connect-src 'self'; frame-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://esm.sh https://cdn.tailwindcss.com 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; connect-src 'self' https://esm.sh; frame-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Resource-Policy: same-origin
