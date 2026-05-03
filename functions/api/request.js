@@ -103,34 +103,125 @@ function parseCookies(response) {
   return cookies;
 }
 
+/**
+ * Retrieve TLS / certificate information via Certificate Transparency logs.
+ *
+ * Tries crt.sh first (primary), falls back to certspotter.com if crt.sh
+ * is unreachable or returns a non-JSON response (Cloudflare Worker IPs
+ * are sometimes rate-limited or blocked by crt.sh).
+ */
 async function getCertInfo(hostname) {
+
+  // ── Source 1: crt.sh ───────────────────────────────────────────────────────
   try {
     const res = await fetch(
       `https://crt.sh/?q=${encodeURIComponent(hostname)}&output=json`,
-      { method: 'GET', signal: AbortSignal.timeout(6000) }
+      {
+        method:  'GET',
+        headers: {
+          'Accept':     'application/json',
+          'User-Agent': 'insecure.co.nz/web-inspector cert-lookup'
+        },
+        signal: AbortSignal.timeout(10_000)
+      }
     );
-    if (!res.ok) return { hostname, source: 'crt.sh', error: `crt.sh returned HTTP ${res.status}.` };
-    const certs = await res.json();
-    if (!Array.isArray(certs) || certs.length === 0) return {
-      hostname, source: 'crt.sh', found: false,
-      note: 'No entries in Certificate Transparency logs. This may indicate a self-signed certificate, a private CA, or a brand-new certificate that has not yet propagated to CT logs.'
+
+    if (res.ok) {
+      const text = await res.text();
+      let certs;
+      try { certs = JSON.parse(text); } catch { /* fall through to certspotter */ }
+
+      if (Array.isArray(certs)) {
+        if (certs.length === 0) return {
+          hostname, source: 'Certificate Transparency (crt.sh)', found: false,
+          note: 'No entries in Certificate Transparency logs. The certificate may be self-signed, issued by a private CA, or too new to have propagated yet.'
+        };
+
+        const latest    = certs.sort((a, b) => new Date(b.not_before) - new Date(a.not_before))[0];
+        const notAfter  = new Date(latest.not_after);
+        const now       = new Date();
+        const isExpired = notAfter < now;
+        const sans      = latest.name_value
+          ? [...new Set(latest.name_value.split(/\n/).map(s => s.trim()).filter(Boolean))]
+          : [];
+
+        return {
+          hostname,
+          source:          'Certificate Transparency (crt.sh)',
+          found:           true,
+          issuer:          latest.issuer_name  || 'Unknown',
+          commonName:      latest.common_name  || hostname,
+          notBefore:       latest.not_before,
+          notAfter:        latest.not_after,
+          isExpired,
+          daysUntilExpiry: isExpired ? 0 : Math.floor((notAfter - now) / 86_400_000),
+          sans,
+          crtShId:         latest.id
+        };
+      }
+    }
+  } catch { /* fall through to certspotter */ }
+
+  // ── Source 2: certspotter.com (fallback) ───────────────────────────────────
+  try {
+    const res = await fetch(
+      `https://api.certspotter.com/v1/issuances?domain=${encodeURIComponent(hostname)}&include_subdomains=false&expand=dns_names&expand=cert`,
+      {
+        method:  'GET',
+        headers: {
+          'Accept':     'application/json',
+          'User-Agent': 'insecure.co.nz/web-inspector cert-lookup'
+        },
+        signal: AbortSignal.timeout(10_000)
+      }
+    );
+
+    if (!res.ok) return {
+      hostname, source: 'certspotter.com', found: false,
+      error: `Certificate lookup failed (HTTP ${res.status} from certspotter.com).`
     };
-    const latest    = certs.sort((a, b) => new Date(b.not_before) - new Date(a.not_before))[0];
+
+    const issuances = await res.json();
+
+    if (!Array.isArray(issuances) || issuances.length === 0) return {
+      hostname, source: 'Certificate Transparency (certspotter.com)', found: false,
+      note: 'No entries in Certificate Transparency logs. The certificate may be self-signed, issued by a private CA, or too new to have propagated yet.'
+    };
+
+    // Sort by not_before descending — most recent first
+    const latest    = issuances.sort((a, b) => new Date(b.not_before) - new Date(a.not_before))[0];
     const notAfter  = new Date(latest.not_after);
     const now       = new Date();
     const isExpired = notAfter < now;
-    const sans      = latest.name_value
-      ? [...new Set(latest.name_value.split(/\n/).map(s => s.trim()).filter(Boolean))]
-      : [];
+    const sans      = Array.isArray(latest.dns_names) ? latest.dns_names : [];
+
+    // certspotter nests issuer inside cert.parsed
+    const parsed    = latest.cert?.parsed || {};
+    const issuer    = parsed.issuer_dn || 'Unknown';
+    const cn        = parsed.subject_dn
+      ? (parsed.subject_dn.match(/CN=([^,]+)/)?.[1] || hostname)
+      : hostname;
+
     return {
-      hostname, source: 'Certificate Transparency (crt.sh)', found: true,
-      issuer: latest.issuer_name || 'Unknown', commonName: latest.common_name || hostname,
-      notBefore: latest.not_before, notAfter: latest.not_after, isExpired,
+      hostname,
+      source:          'Certificate Transparency (certspotter.com)',
+      found:           true,
+      issuer,
+      commonName:      cn,
+      notBefore:       latest.not_before,
+      notAfter:        latest.not_after,
+      isExpired,
       daysUntilExpiry: isExpired ? 0 : Math.floor((notAfter - now) / 86_400_000),
-      sans, crtShId: latest.id
+      sans
     };
+
   } catch {
-    return { hostname, source: 'crt.sh', found: false, error: 'Could not reach crt.sh to retrieve certificate information.' };
+    return {
+      hostname,
+      source: 'Certificate Transparency',
+      found:  false,
+      error:  'Could not reach certificate lookup services (crt.sh and certspotter.com). Both sources are unavailable from this network location.'
+    };
   }
 }
 

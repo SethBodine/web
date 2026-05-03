@@ -173,7 +173,9 @@ function WebRequestInspector() {
         ...(storeHeaders ? { headers: customHeaders } : {})
       };
 
-      const updatedHistory = [historyEntry, ...history].slice(0, 50);
+      // Deduplicate — remove any existing entry with same URL + method before prepending
+      const deduped      = history.filter(h => !(h.url === normalizedUrl && h.method === method));
+      const updatedHistory = [historyEntry, ...deduped].slice(0, 50);
       setHistory(updatedHistory);
       try { localStorage.setItem('requestHistory', JSON.stringify(updatedHistory)); } catch { /* storage full */ }
 
@@ -338,8 +340,6 @@ function WebRequestInspector() {
   return html`
     <div class=${'min-h-screen ' + themeClasses}>
       <div class="container mx-auto px-4 py-6 max-w-7xl">
-
-        <!-- Header -->
         <div class="mb-4 flex justify-between items-center">
           <div>
             <h1 class=${'text-3xl font-bold ' + textClass + ' mb-2'}>Web Request Inspector</h1>
@@ -350,8 +350,6 @@ function WebRequestInspector() {
             class=${'px-4 py-2 rounded hover:opacity-80 ' + (theme === 'light' ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-900')}
           >${theme === 'light' ? '🌙 Dark' : '☀️ Light'}</button>
         </div>
-
-        <!-- Abuse monitoring disclosure -->
         <div class=${'mb-6 px-4 py-3 rounded-lg border flex items-start gap-3 text-sm ' +
           (theme === 'light'
             ? 'bg-blue-50 border-blue-200 text-blue-800'
@@ -367,8 +365,6 @@ function WebRequestInspector() {
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-
-          <!-- History Sidebar -->
           <div class=${'lg:col-span-1 ' + cardClass + ' rounded-lg p-4 border'}>
             <div class="flex justify-between items-center mb-4">
               <h2 class=${'text-lg font-semibold ' + textClass}>History</h2>
@@ -377,8 +373,6 @@ function WebRequestInspector() {
                   <${Trash2} size=${16} />
                 </button>`}
             </div>
-
-            <!-- fix #13: header storage opt-in -->
             <div class="mb-4 pb-3 border-b border-slate-600">
               <label
                 class="flex items-center gap-2 text-xs cursor-pointer"
@@ -428,11 +422,7 @@ function WebRequestInspector() {
               `)}
             </div>
           </div>
-
-          <!-- Main Panel -->
           <div class="lg:col-span-3 space-y-6">
-
-            <!-- Request Configuration -->
             <div class=${'rounded-lg border p-6 ' + cardClass}>
               <div class="flex items-center justify-between mb-4">
                 <h2 class=${'text-lg font-semibold ' + textClass}>Request</h2>
@@ -446,8 +436,6 @@ function WebRequestInspector() {
               </div>
 
               <div class="space-y-4">
-
-                <!-- URL + Method -->
                 <div class="flex gap-2">
                   <select
                     value=${method}
@@ -470,8 +458,6 @@ function WebRequestInspector() {
                     class=${'flex-1 ' + inputClass + ' rounded px-4 py-2 focus:outline-none'}
                   />
                 </div>
-
-                <!-- Headers -->
                 <div>
                   <div class="flex justify-between items-center mb-2">
                     <label class=${'text-sm font-medium ' + mutedTextClass}>Custom Headers</label>
@@ -501,8 +487,6 @@ function WebRequestInspector() {
                     `)}
                   </div>
                 </div>
-
-                <!-- User Agent -->
                 <div>
                   <label class=${'block text-sm font-medium ' + mutedTextClass + ' mb-2'}>User Agent</label>
                   <div class="flex gap-2">
@@ -530,8 +514,6 @@ function WebRequestInspector() {
                       class=${'w-full mt-2 ' + inputClass + ' rounded px-3 py-2 text-sm focus:outline-none'}
                     />`}
                 </div>
-
-                <!-- Request Body -->
                 ${['POST', 'PUT', 'PATCH'].includes(method) && html`
                   <div>
                     <label class=${'block text-sm font-medium ' + mutedTextClass + ' mb-2'}>Request Body</label>
@@ -543,8 +525,6 @@ function WebRequestInspector() {
                       placeholder='{"key": "value"}'
                     />
                   </div>`}
-
-                <!-- Options -->
                 <div class="flex gap-4 items-center flex-wrap">
                   <label class="flex items-center gap-2 text-sm cursor-pointer">
                     <input
@@ -568,8 +548,6 @@ function WebRequestInspector() {
                     <span class=${'text-sm ' + mutedTextClass}>seconds</span>
                   </div>
                 </div>
-
-                <!-- Actions -->
                 <div class="flex gap-3 pt-2 flex-wrap">
                   <button
                     onClick=${executeRequest}
@@ -599,8 +577,6 @@ function WebRequestInspector() {
                 </div>
               </div>
             </div>
-
-            <!-- Response Panel -->
             ${response && html`
               <div class=${'rounded-lg border p-6 ' + cardClass}>
                 <h2 class=${'text-lg font-semibold ' + textClass + ' mb-4'}>Response</h2>
@@ -613,19 +589,16 @@ function WebRequestInspector() {
                     </div>`
                   : html`
                     <${Fragment}>
-                      <!-- Tabs -->
                       <div class="flex gap-2 mb-4 border-b border-slate-600 pb-2 overflow-x-auto">
                         ${tabBtn('overview',  'Overview')}
                         ${tabBtn('headers',   'Headers')}
-                        ${response.cookies?.length && tabBtn('cookies', `Cookies (${response.cookies.length})`)}
-                        ${response.certificate && tabBtn('certificate', 'Certificate')}
-                        ${response.jwtInfo && tabBtn('jwt', '🔑 JWT')}
+                        ${response.cookies?.length > 0 ? tabBtn('cookies', `Cookies (${response.cookies.length})`) : false}
+                        ${response.certificate ? tabBtn('certificate', 'Certificate') : false}
+                        ${response.jwtInfo ? tabBtn('jwt', '🔑 JWT') : false}
                         ${tabBtn('raw',    'Raw')}
                         ${tabBtn('pretty', 'Pretty')}
                         ${response.headers?.['content-type']?.includes('text/html') && tabBtn('rendered', 'Rendered')}
                       </div>
-
-                      <!-- Overview -->
                       ${activeTab === 'overview' && html`
                         <div class="space-y-4">
                           <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -659,7 +632,7 @@ function WebRequestInspector() {
                             </div>
                           </div>
 
-                          ${response.redirectChain?.length && html`
+                          ${response.redirectChain?.length > 0 ? html`
                             <div>
                               <h3 class=${'text-sm font-semibold ' + textClass + ' mb-2'}>Redirect Chain</h3>
                               <div class="space-y-1">
@@ -692,8 +665,6 @@ function WebRequestInspector() {
                             </div>
                           </div>
                         </div>`}
-
-                      <!-- Headers tab -->
                       ${activeTab === 'headers' && html`
                         <div class="space-y-4">
                           <div>
@@ -707,8 +678,6 @@ function WebRequestInspector() {
                             </div>
                           </div>
                         </div>`}
-
-                      <!-- Cookies tab -->
                       ${activeTab === 'cookies' && response.cookies && html`
                         <div class="space-y-4">
                           <h3 class=${'text-sm font-semibold ' + textClass + ' mb-2'}>Cookies Received</h3>
@@ -739,8 +708,6 @@ function WebRequestInspector() {
                             class="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded"
                           ><${Download} /> Download Cookies</button>
                         </div>`}
-
-                      <!-- Certificate tab (rebuilt with crt.sh data) -->
                       ${activeTab === 'certificate' && response.certificate && html`
                         <div class="space-y-4">
                           <h3 class=${'text-sm font-semibold ' + textClass + ' mb-2'}>TLS / Certificate Information</h3>
@@ -781,7 +748,7 @@ function WebRequestInspector() {
                                   <p class=${'text-sm font-mono ' + textClass + ' mt-1 break-all'}>${value}</p>
                                 </div>`)}
 
-                              ${response.certificate.sans?.length && html`
+                              ${response.certificate.sans?.length > 0 ? html`
                                 <div>
                                   <span class=${'text-sm ' + mutedTextClass}>Subject Alternative Names:</span>
                                   <div class="mt-1 flex flex-wrap gap-1">
@@ -805,8 +772,6 @@ function WebRequestInspector() {
                             Self-signed certificates and private-CA certificates will not appear.
                           </p>
                         </div>`}
-
-                      <!-- JWT tab (ported from api.insecure.co.nz) -->
                       ${activeTab === 'jwt' && response.jwtInfo && html`
                         <div class="space-y-4">
                           <div class="flex items-center gap-2 mb-2">
@@ -840,16 +805,12 @@ ${JSON.stringify(response.jwtInfo.header, null, 2)}</pre>
 ${JSON.stringify(response.jwtInfo.payload, null, 2)}</pre>
                           </div>
                         </div>`}
-
-                      <!-- Raw / Pretty / Rendered -->
                       ${(activeTab === 'raw' || activeTab === 'pretty' || activeTab === 'rendered') && renderResponseContent()}
                     </${Fragment}>`}
               </div>`}
 
-          </div><!-- /main panel -->
-        </div><!-- /grid -->
-
-        <!-- Footer -->
+          </div>
+        </div>
         <footer class=${'mt-10 pt-6 border-t text-center text-xs ' +
           (theme === 'light' ? 'border-slate-200 text-slate-400' : 'border-slate-700 text-slate-500')}>
           <p class="mb-1">
