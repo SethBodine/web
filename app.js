@@ -597,7 +597,7 @@ function WebRequestInspector() {
                         ${response.jwtInfo ? tabBtn('jwt', '🔑 JWT') : false}
                         ${tabBtn('raw',    'Raw')}
                         ${tabBtn('pretty', 'Pretty')}
-                        ${response.headers?.['content-type']?.includes('text/html') && tabBtn('rendered', 'Rendered')}
+                        ${response.headers?.['content-type']?.includes('text/html') ? tabBtn('rendered', 'Rendered') : false}
                       </div>
                       ${activeTab === 'overview' && html`
                         <div class="space-y-4">
@@ -641,7 +641,7 @@ function WebRequestInspector() {
                                     ${i + 1}. ${r.status} → ${r.location}
                                   </div>`)}
                               </div>
-                            </div>`}
+                            </div>` : false}
 
                           <div>
                             <h3 class=${'text-sm font-semibold ' + textClass + ' mb-2'}>Timing</h3>
@@ -755,7 +755,7 @@ function WebRequestInspector() {
                                     ${response.certificate.sans.map(san => html`
                                       <span key=${san} class=${'text-xs font-mono px-2 py-0.5 rounded ' + bgSubtle + ' ' + textClass}>${san}</span>`)}
                                   </div>
-                                </div>`}
+                                </div>` : false}
                             </div>`}
 
                           <button
